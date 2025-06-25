@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.game import Game as GameModel  # Используем SQLAlchemy-модель
+from app.models.game import Game as GameModel
 from app.schemas.game import GameCreate
 
 class GameRepository:

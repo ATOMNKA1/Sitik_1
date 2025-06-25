@@ -3,7 +3,7 @@ from typing import Optional
 
 class UserCreate(BaseModel):
     login: str
-    email: EmailStr  # Валидация формата email
+    email: EmailStr
     password: str
 
     @validator("password")
@@ -27,7 +27,7 @@ class UserOut(BaseModel):
     id: int
     login: str
     email: str
-    is_admin: bool  # Добавляем поле для отображения админ-статуса
+    is_admin: bool
 
     class Config:
         from_attributes = True

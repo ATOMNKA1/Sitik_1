@@ -15,14 +15,12 @@ def get_comments(
     limit: int = 10,
     db: Session = Depends(get_db)
 ):
-    # Загружаем комментарии с именем пользователя через JOIN
     comments = (db.query(Comment, User.login.label("username"))
                 .join(User, User.id == Comment.user_id)
                 .filter(Comment.game_id == game_id)
                 .offset(skip)
                 .limit(limit)
                 .all())
-    # Преобразуем результат в список объектов CommentOut
     return [{"id": comment.id, "content": comment.content, "user_id": comment.user_id,
              "game_id": comment.game_id, "username": username} for comment, username in comments]
 
@@ -33,7 +31,6 @@ def create_comment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Проверка существования игры
     from app.models.game import Game
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
@@ -43,7 +40,6 @@ def create_comment(
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
-    # Получаем имя пользователя
     user = db.query(User).filter(User.id == db_comment.user_id).first()
     return {**db_comment.__dict__, "username": user.login}
 
@@ -63,7 +59,6 @@ def update_comment(
         setattr(db_comment, key, value)
     db.commit()
     db.refresh(db_comment)
-    # Получаем имя пользователя
     user = db.query(User).filter(User.id == db_comment.user_id).first()
     return {**db_comment.__dict__, "username": user.login}
 

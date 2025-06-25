@@ -91,7 +91,6 @@ button:disabled {
     margin-top: 10px;
 }
 
-/* Стили для карточек (общие для index.html, admin.html, game.html) */
 .games-grid,
 .users-grid,
 .comments-grid {
@@ -138,7 +137,6 @@ button:disabled {
     opacity: 0.9;
 }
 
-/* Обновляем стиль для favorite-btn */
 .favorite-btn {
     position: absolute;
     bottom: 15px;
@@ -279,7 +277,6 @@ button:disabled {
     color: #2c3e50;
 }
 
-/* Стили для форм */
 .form-group {
     margin-bottom: 15px;
 }
@@ -290,7 +287,6 @@ button:disabled {
     color: #2c3e50;
 }
 
-/* Стили для профиля */
 .user-info {
     margin-bottom: 20px;
 }
@@ -318,7 +314,6 @@ button:disabled {
     color: #2c3e50;
 }
 
-/* Анимация появления карточек */
 .game-card,
 .user-card {
     animation: fadeIn 0.5s ease-in-out;
@@ -336,7 +331,6 @@ button:disabled {
     }
 }
 
-/* Стили для кнопки "Редактировать профиль" и формы */
 button.edit-btn {
     background-color: #f1c40f;
     padding: 10px 20px;
@@ -364,12 +358,10 @@ form#editProfileForm button[type="button"]:hover {
     background-color: #c0392b;
 }
 
-/* Стили для списка пользователей и комментариев */
 .comment-card p strong {
     color: #2c3e50;
 }
 
-/* Стили для кнопки "Подробнее" */
 .details-btn {
     display: inline-block;
     padding: 8px 16px;

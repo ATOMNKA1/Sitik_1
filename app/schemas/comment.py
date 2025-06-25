@@ -10,7 +10,7 @@ class CommentOut(CommentBase):
     id: int
     user_id: int
     game_id: int
-    username: str  # Новое поле для имени пользователя
+    username: str
 
     class Config:
         from_attributes = True

@@ -13,7 +13,6 @@
     <div class="container">
         <h1>Админ-панель</h1>
 
-        <!-- Управление играми -->
         <h2>Управление играми</h2>
         <form id="gameForm">
             <div class="form-group">
@@ -43,16 +42,13 @@
         <div id="games" class="games-grid"></div>
         <div class="pagination" id="gamesPagination"></div>
 
-        <!-- Управление пользователями -->
         <h2>Управление пользователями</h2>
         <div id="users" class="users-grid"></div>
         <div class="pagination" id="usersPagination"></div>
 
         <p id="error" class="error"></p>
     </div>
-    <!-- Убрали <script src="js/api.js?v=3.0"></script> временно -->
     <script>
-        // Временная вставка fetchWithToken
         async function fetchWithToken(url, options = {}, token) {
             const headers = {
                 'Content-Type': 'application/json',

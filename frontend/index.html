@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Каталог игр</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <nav id="navbar" class="navbar"></nav>
+    <div class="container">
+        <h1>Каталог игр</h1>
+        <input type="text" id="search" placeholder="Поиск по названию...">
+        <div id="games" class="games-grid"></div>
+        <div id="pagination" class="pagination"></div>
+        <p id="error" class="error"></p>
+    </div>
+    <script src="js/api.js"></script>
+    <script>
+        let currentPage = 0;
+        const limit = 10;
+
+        function renderNavbar() {
+            const token = localStorage.getItem('token');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
+            const navbar = document.getElementById('navbar');
+            navbar.innerHTML = `
+                <a href="index.html">Главная</a>
+                ${token ? `
+                    <a href="profile.html">Профиль</a>
+                    ${isAdmin ? '<a href="admin.html">Админ-панель</a>' : ''}
+                    <button onclick="logout()">Выйти</button>
+                ` : `
+                    <a href="login.html">Войти</a>
+                    <a href="register.html">Регистрация</a>
+                `}
+            `;
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('isAdmin');
+            window.location.href = 'login.html';
+        }
+
+        async function toggleFavorite(gameId, button) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            try {
+                const isFav = await isFavorited(gameId, token);
+                if (isFav) {
+                    await removeFavorite(gameId, token);
+                    button.setAttribute('data-text', 'Добавить в избранное');
+                } else {
+                    await addFavorite({ game_id: gameId }, token);
+                    button.setAttribute('data-text', 'Удалить из избранного');
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = err.message;
+            }
+        }
+
+        async function loadGames(page) {
+            const search = document.getElementById('search').value;
+            try {
+                const data = await getGames(page * limit, limit, search);
+                const games = document.getElementById('games');
+                games.innerHTML = data.map(game => `
+            <div class="game-card">
+                <div class="game-image-container">
+                    <img src="${game.main_image}" alt="${game.name}" class="game-image">
+                    <button class="favorite-btn" onclick="toggleFavorite(${game.id}, this)" data-text="Добавить в избранное"></button>
+                </div>
+                <div class="game-content">
+                    <h3><a href="game.html?id=${game.id}">${game.name}</a></h3>
+                    <p class="game-description">${game.description}</p>
+                    <p class="game-requirements"><strong>Системные требования:</strong><br>${game.system_requirements.replace(/\n/g, '<br>')}</p>
+                </div>
+            </div>
+        `).join('');
+                renderPagination(page, data.length === limit);
+
+                const token = localStorage.getItem('token');
+                if (token) {
+                    document.querySelectorAll('.game-card').forEach(async (card, index) => {
+                        const gameId = data[index].id;
+                        const button = card.querySelector('.favorite-btn');
+                        try {
+                            const isFav = await isFavorited(gameId, token);
+                            button.setAttribute('data-text', isFav ? 'Удалить из избранного' : 'Добавить в избранное');
+                        } catch (err) {
+                            console.error(`Ошибка проверки избранного для игры ${gameId}:`, err);
+                        }
+                    });
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = err.message;
+            }
+        }
+
+        function renderPagination(page, hasMore) {
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = `
+                <button onclick="loadGames(${page - 1})" ${page === 0 ? 'disabled' : ''}>Назад</button>
+                <span>Страница ${page + 1}</span>
+                <button onclick="loadGames(${page + 1})" ${!hasMore ? 'disabled' : ''}>Вперед</button>
+            `;
+        }
+
+        document.getElementById('search').addEventListener('input', () => loadGames(0));
+        window.onload = () => {
+            renderNavbar();
+            loadGames(0);
+        };
+    </script>
+</body>
+
+</html>

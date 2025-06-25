@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <nav id="navbar" class="navbar"></nav>
+    <div class="container">
+        <h1>Админ-панель</h1>
+
+        <!-- Управление играми -->
+        <h2>Управление играми</h2>
+        <form id="gameForm">
+            <div class="form-group">
+                <label for="gameId">ID игры (для редактирования)</label>
+                <input type="number" id="gameId" readonly>
+            </div>
+            <div class="form-group">
+                <label for="gameName">Название</label>
+                <input type="text" id="gameName" required>
+            </div>
+            <div class="form-group">
+                <label for="gameDescription">Описание</label>
+                <textarea id="gameDescription" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="gameRequirements">Системные требования</label>
+                <textarea id="gameRequirements" required
+                    placeholder="Введите характеристики с переносами строк"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="gameImage">URL изображения</label>
+                <input type="text" id="gameImage" required>
+            </div>
+            <button type="submit">Создать/Обновить игру</button>
+            <button type="button" id="resetForm" onclick="resetGameForm()">Сбросить</button>
+        </form>
+        <div id="games" class="games-grid"></div>
+        <div class="pagination" id="gamesPagination"></div>
+
+        <!-- Управление пользователями -->
+        <h2>Управление пользователями</h2>
+        <div id="users" class="users-grid"></div>
+        <div class="pagination" id="usersPagination"></div>
+
+        <p id="error" class="error"></p>
+    </div>
+    <!-- Убрали <script src="js/api.js?v=3.0"></script> временно -->
+    <script>
+        // Временная вставка fetchWithToken
+        async function fetchWithToken(url, options = {}, token) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers,
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(url, {
+                ...options,
+                headers,
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText);
+            }
+            return response.json();
+        }
+        console.log("fetchWithToken function defined inline:", typeof fetchWithToken);
+
+        let gamePage = 0;
+        let userPage = 0;
+        const limit = 10;
+
+        function renderNavbar() {
+            const token = localStorage.getItem('token');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
+            const navbar = document.getElementById('navbar');
+            navbar.innerHTML = `
+                <a href="index.html">Главная</a>
+                ${token ? `
+                    <a href="profile.html">Профиль</a>
+                    ${isAdmin ? '<a href="admin.html">Админ-панель</a>' : ''}
+                    <button onclick="logout()">Выйти</button>
+                ` : `
+                    <a href="login.html">Войти</a>
+                    <a href="register.html">Регистрация</a>
+                `}
+            `;
+            if (!token || !isAdmin) {
+                console.log("Redirecting to login.html because token or isAdmin is missing");
+                window.location.href = 'login.html';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('isAdmin');
+            window.location.href = 'login.html';
+        }
+
+        async function loadGames() {
+            const token = localStorage.getItem('token');
+            try {
+                const games = await fetchWithToken(`http://127.0.0.1:8000/games?skip=${gamePage * limit}&limit=${limit}`, {}, token);
+                console.log("Loaded games:", games);
+                const gamesDiv = document.getElementById('games');
+                gamesDiv.innerHTML = games.map(game => `
+                    <div class="game-card">
+                        <h3>${game.name}</h3>
+                        <p>${game.description}</p>
+                        <p><strong>Системные требования:</strong><br>${game.system_requirements.replace(/\n/g, '<br>')}</p>
+                        <img src="${game.main_image}" alt="${game.name}" class="game-image" onerror="this.src='https://via.placeholder.com/150';">
+                        <div class="game-actions">
+                            <button onclick="editGame(${game.id}, '${game.name.replace(/'/g, "\\'")}', '${game.description.replace(/'/g, "\\'")}', '${game.system_requirements.replace(/'/g, "\\'")}', '${game.main_image.replace(/'/g, "\\'")}')">Редактировать</button>
+                            <button onclick="deleteGame(${game.id})">Удалить</button>
+                        </div>
+                    </div>
+                `).join('');
+                renderGamesPagination(games.length === limit);
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка загрузки игр: ${errorMessage}`;
+            }
+        }
+
+        function renderGamesPagination(hasMore) {
+            const pagination = document.getElementById('gamesPagination');
+            pagination.innerHTML = `
+                <button onclick="gamePage--; loadGames();" ${gamePage === 0 ? 'disabled' : ''}>Назад</button>
+                <span>Страница ${gamePage + 1}</span>
+                <button onclick="gamePage++; loadGames();" ${!hasMore ? 'disabled' : ''}>Вперед</button>
+            `;
+        }
+
+        async function loadUsers() {
+            const token = localStorage.getItem('token');
+            const currentUserId = localStorage.getItem('userId');
+            try {
+                const users = await fetchWithToken(`http://127.0.0.1:8000/users?skip=${userPage * limit}&limit=${limit}`, {}, token);
+                console.log("Loaded users:", users);
+                const usersDiv = document.getElementById('users');
+                usersDiv.innerHTML = users.map(user => `
+                    <div class="user-card">
+                        <p>ID: ${user.id}, Логин: ${user.login}, Email: ${user.email}, Админ: ${user.is_admin ? 'Да' : 'Нет'}</p>
+                        <div class="user-actions">
+                            ${user.id != currentUserId ? `<button onclick="deleteUser(${user.id})">Удалить</button>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                renderUsersPagination(users.length === limit);
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка загрузки пользователей: ${errorMessage}`;
+            }
+        }
+
+        function renderUsersPagination(hasMore) {
+            const pagination = document.getElementById('usersPagination');
+            pagination.innerHTML = `
+                <button onclick="userPage--; loadUsers();" ${userPage === 0 ? 'disabled' : ''}>Назад</button>
+                <span>Страница ${userPage + 1}</span>
+                <button onclick="userPage++; loadUsers();" ${!hasMore ? 'disabled' : ''}>Вперед</button>
+            `;
+        }
+
+        document.getElementById('gameForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = localStorage.getItem('token');
+            const id = document.getElementById('gameId').value;
+            const data = {
+                name: document.getElementById('gameName').value,
+                description: document.getElementById('gameDescription').value,
+                system_requirements: document.getElementById('gameRequirements').value,
+                main_image: document.getElementById('gameImage').value,
+            };
+            try {
+                if (id) {
+                    await fetchWithToken(`http://127.0.0.1:8000/games/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(data),
+                    }, token);
+                    alert('Игра обновлена');
+                } else {
+                    await fetchWithToken('http://127.0.0.1:8000/games', {
+                        method: 'POST',
+                        body: JSON.stringify(data),
+                    }, token);
+                    alert('Игра создана');
+                }
+                resetGameForm();
+                loadGames();
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка: ${errorMessage}`;
+            }
+        });
+
+        function editGame(id, name, description, system_requirements, main_image) {
+            document.getElementById('gameId').value = id;
+            document.getElementById('gameName').value = name;
+            document.getElementById('gameDescription').value = description;
+            document.getElementById('gameRequirements').value = system_requirements;
+            document.getElementById('gameImage').value = main_image;
+        }
+
+        function resetGameForm() {
+            document.getElementById('gameForm').reset();
+            document.getElementById('gameId').value = '';
+        }
+
+        async function deleteGame(gameId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            if (!confirm('Вы уверены, что хотите удалить игру?')) return;
+            try {
+                await fetchWithToken(`http://127.0.0.1:8000/games/${gameId}`, {
+                    method: 'DELETE',
+                }, token);
+                loadGames();
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка удаления игры: ${errorMessage}`;
+            }
+        }
+
+        async function deleteUser(userId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            if (!confirm('Вы уверены, что хотите удалить пользователя?')) return;
+            try {
+                await fetchWithToken(`http://127.0.0.1:8000/users/${userId}`, {
+                    method: 'DELETE',
+                }, token);
+                loadUsers();
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка удаления пользователя: ${errorMessage}`;
+            }
+        }
+
+        window.onload = () => {
+            renderNavbar();
+            loadUsers();
+            loadGames();
+        };
+    </script>
+</body>
+
+</html>

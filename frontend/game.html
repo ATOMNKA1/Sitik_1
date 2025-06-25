@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <nav id="navbar" class="navbar"></nav>
+    <div class="container">
+        <h1 id="gameTitle"></h1>
+        <div id="gameDetails" class="game-details"></div>
+        <h2>Комментарии</h2>
+        <div id="comments" class="comments"></div>
+        <div id="commentsPagination" class="pagination"></div>
+        <div class="comment-form">
+            <textarea id="commentContent" placeholder="Оставьте ваш комментарий"></textarea>
+            <button onclick="addComment()">Добавить комментарий</button>
+        </div>
+        <p id="error" class="error"></p>
+    </div>
+    <script src="js/api.js"></script>
+    <script>
+        let commentsPage = 0;
+        const commentsLimit = 10;
+
+        function renderNavbar() {
+            const token = localStorage.getItem('token');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
+            const navbar = document.getElementById('navbar');
+            navbar.innerHTML = `
+                <a href="index.html">Главная</a>
+                ${token ? `
+                    <a href="profile.html">Профиль</a>
+                    ${isAdmin ? '<a href="admin.html">Админ-панель</a>' : ''}
+                    <button onclick="logout()">Выйти</button>
+                ` : `
+                    <a href="login.html">Войти</a>
+                    <a href="register.html">Регистрация</a>
+                `}
+            `;
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('isAdmin');
+            window.location.href = 'login.html';
+        }
+
+        async function loadGame() {
+            const gameId = new URLSearchParams(window.location.search).get('id');
+            if (!gameId) {
+                document.getElementById('error').textContent = 'Игра не указана';
+                return;
+            }
+            try {
+                const game = await getGame(gameId);
+                const token = localStorage.getItem('token');
+                let isFavorited = false;
+                if (token) {
+                    try {
+                        isFavorited = await isFavorited(gameId, token);
+                    } catch (err) {
+                        console.error("Failed to check if favorited:", err.message);
+                    }
+                }
+                document.getElementById('gameTitle').textContent = game.name;
+                document.getElementById('gameDetails').innerHTML = `
+                    <div class="game-card full-width">
+                        <div class="game-image-container">
+                            <img src="${game.main_image}" alt="${game.name}" class="game-image">
+                            ${token ? `<button class="favorite-btn" onclick="toggleFavorite(${game.id}, this)" data-text="${isFavorited ? 'Удалить из избранного' : 'Добавить в избранное'}"></button>` : ''}
+                        </div>
+                        <div class="game-content">
+                            <p class="game-description">${game.description}</p>
+                            <p class="game-requirements"><strong>Системные требования:</strong><br>${game.system_requirements.replace(/\n/g, '<br>')}</p>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка загрузки игры: ${errorMessage}`;
+            }
+        }
+
+        async function loadComments() {
+            const gameId = new URLSearchParams(window.location.search).get('id');
+            try {
+                const comments = await getComments(gameId, commentsPage * commentsLimit, commentsLimit);
+                const commentsDiv = document.getElementById('comments');
+                const token = localStorage.getItem('token');
+                const userId = localStorage.getItem('userId');
+                const isAdmin = localStorage.getItem('isAdmin') === 'true';
+                if (comments.length === 0) {
+                    commentsDiv.innerHTML = '<p>Комментариев пока нет.</p>';
+                    document.getElementById('commentsPagination').innerHTML = '';
+                    return;
+                }
+                commentsDiv.innerHTML = comments.map(comment => `
+                    <div class="comment">
+                        <p><strong>${comment.username}:</strong> ${comment.content}</p>
+                        ${(token && (comment.user_id == userId || isAdmin)) ? `
+                            <div class="comment-actions">
+                                <button onclick="editComment(${comment.id}, '${comment.content}')">Редактировать</button>
+                                <button onclick="deleteCommentAction(${comment.id})">Удалить</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+                renderCommentsPagination(comments.length === commentsLimit);
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка загрузки комментариев: ${err.message}`;
+            }
+        }
+
+        function renderCommentsPagination(hasMore) {
+            const pagination = document.getElementById('commentsPagination');
+            pagination.innerHTML = `
+                <button onclick="commentsPage--; loadComments();" ${commentsPage === 0 ? 'disabled' : ''}>Назад</button>
+                <span>Страница ${commentsPage + 1}</span>
+                <button onclick="commentsPage++; loadComments();" ${!hasMore ? 'disabled' : ''}>Вперед</button>
+            `;
+        }
+
+        async function addComment() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            const content = document.getElementById('commentContent').value.trim();
+            if (!content) {
+                document.getElementById('error').textContent = 'Комментарий не может быть пустым';
+                return;
+            }
+            try {
+                const gameId = new URLSearchParams(window.location.search).get('id');
+                await createComment(gameId, { content }, token);
+                document.getElementById('commentContent').value = '';
+                document.getElementById('error').textContent = '';
+                loadComments();
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail && Array.isArray(errorDetail.detail)) {
+                            errorMessage = errorDetail.detail.map(e => e.msg).join(', ');
+                        } else if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка: ${errorMessage}`;
+            }
+        }
+
+        async function editComment(commentId, content) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            const newContent = prompt('Редактировать комментарий:', content);
+            if (newContent === null || newContent.trim() === '') return;
+            try {
+                await updateComment(commentId, { content: newContent }, token);
+                loadComments();
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка редактирования: ${err.message}`;
+            }
+        }
+
+        async function deleteCommentAction(commentId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            if (!confirm('Вы уверены, что хотите удалить комментарий?')) return;
+            try {
+                await deleteComment(commentId, token);
+                loadComments();
+            } catch (err) {
+                let errorMessage = 'Неизвестная ошибка';
+                if (err.message) {
+                    try {
+                        const errorDetail = JSON.parse(err.message);
+                        if (errorDetail.detail) {
+                            errorMessage = errorDetail.detail;
+                        }
+                    } catch {
+                        errorMessage = err.message;
+                    }
+                }
+                document.getElementById('error').textContent = `Ошибка удаления: ${errorMessage}`;
+            }
+        }
+
+        async function toggleFavorite(gameId, button) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            try {
+                const isFav = await isFavorited(gameId, token);
+                if (isFav) {
+                    if (!confirm('Убрать игру из избранного?')) return;
+                    await removeFavorite(gameId, token);
+                    button.setAttribute('data-text', 'Добавить в избранное');
+                } else {
+                    await addFavorite({ game_id: gameId }, token);
+                    button.setAttribute('data-text', 'Удалить из избранного');
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка: ${err.message}`;
+            }
+        }
+
+        window.onload = () => {
+            renderNavbar();
+            loadGame();
+            loadComments();
+        };
+    </script>
+</body>
+
+</html>

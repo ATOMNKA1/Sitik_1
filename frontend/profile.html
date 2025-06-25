@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <nav id="navbar" class="navbar"></nav>
+    <div class="container">
+        <h1>Профиль</h1>
+        <div id="userInfo" class="user-info"></div>
+        <button onclick="showEditForm()">Редактировать профиль</button>
+        <form id="editProfileForm" style="display: none;">
+            <div class="form-group">
+                <label for="editLogin">Логин</label>
+                <input type="text" id="editLogin" required>
+            </div>
+            <div class="form-group">
+                <label for="editEmail">Email</label>
+                <input type="email" id="editEmail" required>
+            </div>
+            <div class="form-group">
+                <label for="editPassword">Новый пароль (оставьте пустым, чтобы не менять)</label>
+                <input type="password" id="editPassword">
+            </div>
+            <button type="submit">Сохранить</button>
+            <button type="button" onclick="hideEditForm()">Отмена</button>
+        </form>
+        <h2>Избранное</h2>
+        <div id="favorites" class="games-grid"></div>
+        <div id="favoritesPagination" class="pagination"></div>
+        <p id="error" class="error"></p>
+    </div>
+    <script src="js/api.js"></script>
+    <script>
+        let favoritesPage = 0;
+        const favoritesLimit = 5;
+        let currentUser = null;
+
+        function renderNavbar() {
+            const token = localStorage.getItem('token');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
+            const navbar = document.getElementById('navbar');
+            navbar.innerHTML = `
+                <a href="index.html">Главная</a>
+                ${token ? `
+                    <a href="profile.html">Профиль</a>
+                    ${isAdmin ? '<a href="admin.html">Админ-панель</a>' : ''}
+                    <button onclick="logout()">Выйти</button>
+                ` : `
+                    <a href="login.html">Войти</a>
+                    <a href="register.html">Регистрация</a>
+                `}
+            `;
+            if (!token) {
+                window.location.href = 'login.html';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('isAdmin');
+            window.location.href = 'login.html';
+        }
+
+        async function loadUser() {
+            const userId = localStorage.getItem('userId');
+            const token = localStorage.getItem('token');
+            if (!userId || !token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            try {
+                const user = await getUser(userId, token);
+                currentUser = user;
+                const userInfo = document.getElementById('userInfo');
+                userInfo.innerHTML = `
+                    <div class="user-card">
+                        <p><strong>Логин:</strong> ${user.login}</p>
+                        <p><strong>Email:</strong> ${user.email}</p>
+                        <p><strong>Админ:</strong> ${user.is_admin ? 'Да' : 'Нет'}</p>
+                    </div>
+                `;
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка загрузки пользователя: ${err.message}`;
+                if (err.message.includes('404')) {
+                    logout();
+                }
+            }
+        }
+
+        function showEditForm() {
+            if (!currentUser) {
+                document.getElementById('error').textContent = 'Данные пользователя не загружены';
+                return;
+            }
+            const form = document.getElementById('editProfileForm');
+            document.getElementById('editLogin').value = currentUser.login;
+            document.getElementById('editEmail').value = currentUser.email;
+            document.getElementById('editPassword').value = '';
+            form.style.display = 'block';
+        }
+
+        function hideEditForm() {
+            const form = document.getElementById('editProfileForm');
+            form.style.display = 'none';
+            form.reset();
+        }
+
+        async function loadFavorites() {
+            const token = localStorage.getItem('token');
+            try {
+                const favorites = await getFavorites(token, favoritesPage * favoritesLimit, favoritesLimit);
+                const favoritesDiv = document.getElementById('favorites');
+                if (favorites.length === 0) {
+                    favoritesDiv.innerHTML = '<p>У вас нет избранных игр.</p>';
+                    document.getElementById('favoritesPagination').innerHTML = '';
+                    return;
+                }
+                favoritesDiv.innerHTML = favorites.map(fav => {
+                    if (!fav.game) {
+                        console.warn(`Игра с ID ${fav.game_id} не найдена в ответе`, fav);
+                        return '';
+                    }
+                    return `
+                        <div class="game-card">
+                            <div class="game-image-container">
+                                <img src="${fav.game.main_image}" alt="${fav.game.name}" class="game-image">
+                                <button class="favorite-btn" onclick="toggleFavorite(${fav.game.id}, this)" data-text="Удалить из избранного"></button>
+                            </div>
+                            <div class="game-content">
+                                <h3><a href="game.html?id=${fav.game.id}">${fav.game.name}</a></h3>
+                                <p class="game-description">${fav.game.description}</p>
+                                <p class="game-requirements"><strong>Системные требования:</strong><br>${fav.game.system_requirements.replace(/\n/g, '<br>')}</p>
+                                <div class="game-actions">
+                                    <a href="game.html?id=${fav.game.id}" class="details-btn">Подробнее</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                renderFavoritesPagination(favorites.length === favoritesLimit);
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка загрузки избранного: ${err.message}`;
+            }
+        }
+
+        function renderFavoritesPagination(hasMore) {
+            const pagination = document.getElementById('favoritesPagination');
+            pagination.innerHTML = `
+                <button onclick="favoritesPage--; loadFavorites();" ${favoritesPage === 0 ? 'disabled' : ''}>Назад</button>
+                <span>Страница ${favoritesPage + 1}</span>
+                <button onclick="favoritesPage++; loadFavorites();" ${!hasMore ? 'disabled' : ''}>Вперед</button>
+            `;
+        }
+
+        async function toggleFavorite(gameId, button) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Пожалуйста, войдите в аккаунт');
+                return;
+            }
+            try {
+                console.log(`Проверка избранного для игры ${gameId}`);
+                const isFav = await isFavorited(gameId, token);
+                console.log(`Игра ${gameId} в избранном: ${isFav}`);
+                if (isFav) {
+                    if (!confirm('Убрать игру из избранного?')) return;
+                    console.log(`Удаляем игру ${gameId} из избранного`);
+                    await removeFavorite(gameId, token);
+                    console.log(`Игра ${gameId} удалена из избранного`);
+                    button.setAttribute('data-text', 'Добавить в избранное');
+                    loadFavorites();
+                } else {
+                    console.log(`Добавляем игру ${gameId} в избранное`);
+                    await addFavorite({ game_id: gameId }, token);
+                    console.log(`Игра ${gameId} добавлена в избранное`);
+                    button.setAttribute('data-text', 'Удалить из избранного');
+                }
+            } catch (err) {
+                console.error(`Ошибка при работе с избранным для игры ${gameId}:`, err);
+                document.getElementById('error').textContent = `Ошибка: ${err.message}`;
+            }
+        }
+
+        document.getElementById('editProfileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = localStorage.getItem('userId');
+            const token = localStorage.getItem('token');
+            const data = {
+                login: document.getElementById('editLogin').value,
+                email: document.getElementById('editEmail').value,
+            };
+            const password = document.getElementById('editPassword').value;
+            if (password) {
+                data.password = password;
+            }
+            try {
+                await updateUser(userId, data, token);
+                alert('Профиль успешно обновлен');
+                hideEditForm();
+                loadUser();
+            } catch (err) {
+                document.getElementById('error').textContent = `Ошибка обновления профиля: ${err.message}`;
+            }
+        });
+
+        window.onload = () => {
+            renderNavbar();
+            loadUser();
+            loadFavorites();
+        };
+    </script>
+</body>
+
+</html>
